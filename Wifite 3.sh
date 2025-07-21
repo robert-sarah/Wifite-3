@@ -1,8 +1,7 @@
 #!/bin/bash
 # ===========================================
-#   WIFITE SHELL ULTIMATE
+#   WIFITE SHELL ULTIMATE - VERSION 2.1
 #   Auteur: Levi
-#   Version: 2.1
 #   Date: 2025
 # ===========================================
 
@@ -34,7 +33,6 @@ cleanup() {
         airmon-ng stop "$MON_INTERFACE" &>/dev/null || true
     fi
     restore_network
-    # chmod uniquement si dossier existe et non vide
     if [ -d "$LOGDIR" ] && [ "$(ls -A "$LOGDIR")" ]; then
         chmod 600 "$LOGDIR"/*
     fi
@@ -71,6 +69,16 @@ restore_network() {
     fi
 }
 
+# Vérifie si la carte supporte mode monitor
+check_monitor_support() {
+    local iface="$1"
+    if ! iw list | grep -A 10 "Supported interface modes" | grep -q "monitor"; then
+        echo "${RED}[!] Ta carte Wi-Fi ($iface) NE supporte PAS le mode monitor.${RESET}"
+        echo "${YELLOW}[*] Utilise une carte compatible (Atheros, Realtek RTL8812AU, etc.).${RESET}"
+        exit 1
+    fi
+}
+
 # Choix via dialog
 menu_dialog() {
     dialog --clear --title "$1" --menu "$2" 20 60 10 "${@:3}" 2>&1 >/dev/tty
@@ -79,20 +87,21 @@ menu_dialog() {
 # Choix interface
 choose_interface() {
     interfaces=($(iw dev | grep Interface | awk '{print $2}'))
+    if [[ ${#interfaces[@]} -eq 0 ]]; then
+        echo "${RED}[!] Aucune interface Wi-Fi détectée.${RESET}"
+        exit 1
+    fi
     options=()
     for i in "${interfaces[@]}"; do
         options+=("$i" "Interface Wi-Fi")
     done
-    if [[ ${#interfaces[@]} -eq 0 ]]; then
-        echo "${RED}[!] Pas d'interface détectée.${RESET}"
-        exit 1
-    fi
     menu_dialog "Sélection Interface" "Choisis l'interface à utiliser" "${options[@]}"
 }
 
 # Activer mode monitor
 enable_monitor() {
     iface="$1"
+    check_monitor_support "$iface"
     airmon-ng check kill
     airmon-ng start "$iface" >/dev/null
     echo "${CYAN}[*] Mode monitor activé sur $iface${RESET}"
@@ -104,7 +113,7 @@ scan_networks() {
     airodump-ng --write "$TMPDIR/scan" --output-format csv "$MON_INTERFACE" >/dev/null &
     PID=$!
     sleep 10
-    kill $PID
+    kill "$PID" 2>/dev/null || true
 }
 
 # Liste réseaux
